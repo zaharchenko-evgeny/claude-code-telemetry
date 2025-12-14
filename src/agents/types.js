@@ -17,6 +17,8 @@ const EventType = {
   GENERATION: 'generation', // Token usage / model response
   TOOL_DECISION: 'tool_decision',
   TOOL_RESULT: 'tool_result',
+  FILE_OPERATION: 'file_operation', // File create/read/update operations
+  AGENT_LIFECYCLE: 'agent_lifecycle', // Agent start/finish events
 }
 
 /**
@@ -176,6 +178,45 @@ function createToolResultEvent(params) {
   }
 }
 
+/**
+ * Create a normalized file operation event
+ * @param {Object} params - Event parameters
+ * @returns {Object} Normalized event
+ */
+function createFileOperationEvent(params) {
+  return {
+    type: EventType.FILE_OPERATION,
+    timestamp: params.timestamp || new Date().toISOString(),
+    sessionId: params.sessionId,
+    toolName: params.toolName || 'file',
+    operation: params.operation || 'unknown', // create, read, update
+    lines: params.lines || 0,
+    mimetype: params.mimetype,
+    extension: params.extension,
+    programmingLanguage: params.programmingLanguage,
+    metadata: params.metadata || {},
+  }
+}
+
+/**
+ * Create a normalized agent lifecycle event
+ * @param {Object} params - Event parameters
+ * @returns {Object} Normalized event
+ */
+function createAgentLifecycleEvent(params) {
+  return {
+    type: EventType.AGENT_LIFECYCLE,
+    timestamp: params.timestamp || new Date().toISOString(),
+    sessionId: params.sessionId,
+    agentName: params.agentName || 'default',
+    lifecycle: params.lifecycle || 'unknown', // start, finish
+    durationMs: params.durationMs || 0,
+    turns: params.turns || 0,
+    terminationReason: params.terminationReason,
+    metadata: params.metadata || {},
+  }
+}
+
 module.exports = {
   EventType,
   createConversationStartEvent,
@@ -185,4 +226,6 @@ module.exports = {
   createGenerationEvent,
   createToolDecisionEvent,
   createToolResultEvent,
+  createFileOperationEvent,
+  createAgentLifecycleEvent,
 }

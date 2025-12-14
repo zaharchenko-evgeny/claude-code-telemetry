@@ -42,7 +42,8 @@
       "mcp__jetbrains__get_file_text_by_path",
       "Bash(wc:*)",
       "Bash(npm audit:*)",
-      "WebFetch(domain:langfuse.labs.jb.gg)"
+      "WebFetch(domain:langfuse.labs.jb.gg)",
+      "Bash(npx eslint:*)"
     ],
     "deny": []
   }

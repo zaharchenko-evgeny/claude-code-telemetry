@@ -15,6 +15,7 @@
 const pino = require('pino')
 const ClaudeAgent = require('./claudeAgent')
 const CodexAgent = require('./codexAgent')
+const GeminiAgent = require('./geminiAgent')
 
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -35,7 +36,7 @@ const logger = pino({
  * Registered agents - add new agents here
  * Order matters: first matching agent wins
  */
-const AGENTS = [ClaudeAgent, CodexAgent]
+const AGENTS = [ClaudeAgent, CodexAgent, GeminiAgent]
 
 /**
  * Agent registry for managing telemetry processors
@@ -217,4 +218,5 @@ module.exports = {
   // Export agent classes for direct access
   ClaudeAgent,
   CodexAgent,
+  GeminiAgent,
 }

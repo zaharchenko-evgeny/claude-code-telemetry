@@ -2,11 +2,12 @@
  * AI Agent Telemetry Processors
  *
  * This module provides a pluggable architecture for handling telemetry
- * from different AI coding assistants (Claude Code, Codex, etc.)
+ * from different AI coding assistants (Claude Code, Codex, Gemini CLI, etc.)
  *
  * Currently supported agents:
  * - claude-code: Anthropic's Claude Code CLI
  * - codex: OpenAI's Codex CLI
+ * - gemini: Google's Gemini CLI
  *
  * To add support for a new AI agent:
  *
@@ -48,6 +49,7 @@ const { EventType } = require('./types')
 const BaseAgent = require('./baseAgent')
 const ClaudeAgent = require('./claudeAgent')
 const CodexAgent = require('./codexAgent')
+const GeminiAgent = require('./geminiAgent')
 const {
   AgentRegistry,
   registry,
@@ -66,6 +68,7 @@ module.exports = {
   // Built-in agents
   ClaudeAgent,
   CodexAgent,
+  GeminiAgent,
 
   // Registry
   AgentRegistry,

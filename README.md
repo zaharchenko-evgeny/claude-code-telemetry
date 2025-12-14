@@ -10,7 +10,7 @@
 
 <p align="center">
   <strong>See exactly how you/your team uses AI coding assistants</strong><br>
-  Track costs, usage patterns, and session data for Claude Code and Codex CLI
+  Track costs, usage patterns, and session data for Claude Code, Codex CLI, and Gemini CLI
 </p>
 
 ---
@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/2634cec3-94af-4a2d-90da-44cd641f1746
 
 ## 🎯 What This Actually Does
 
-A lightweight telemetry bridge that captures data from **Claude Code** and **OpenAI Codex CLI** and forwards it to Langfuse for visualization. You get:
+A lightweight telemetry bridge that captures data from **Claude Code**, **OpenAI Codex CLI**, and **Google Gemini CLI** and forwards it to Langfuse for visualization. You get:
 
 - 💰 **Cost Tracking** - See costs per session, user, and model
 - 📊 **Usage Metrics** - Token counts, cache hits, and tool usage
@@ -107,14 +107,14 @@ Today's Usage:
 
 ```
 Claude Code ─┐                              ┌─→ Langfuse Dashboard
-             │    OpenTelemetry    Telemetry│
-             ├──→ (OTLP Logs) ───→  Bridge ─┤
              │                              │
-  Codex CLI ─┘                              └─→ OpenTelemetry Collector (optional)
+  Codex CLI ─┼──→ OpenTelemetry ───→ Bridge ─┤
+             │    (OTLP Logs)               │
+ Gemini CLI ─┘                              └─→ OpenTelemetry Collector (optional)
 ```
 
 The bridge:
-1. Listens for OpenTelemetry data from Claude Code and Codex CLI
+1. Listens for OpenTelemetry data from Claude Code, Codex CLI, and Gemini CLI
 2. Detects the agent type and normalizes events
 3. Enriches with session context
 4. Forwards to Langfuse for visualization
@@ -171,7 +171,7 @@ docker compose up telemetry-bridge
 ## 📋 Requirements
 
 - Docker Desktop ([install](https://docker.com/products/docker-desktop)) - For quickstart
-- Claude Code CLI (`claude`) and/or Codex CLI (`codex`)
+- Claude Code CLI (`claude`), Codex CLI (`codex`), and/or Gemini CLI (`gemini`)
 - Node.js 18+ (optional) - For bridge-only mode
 
 ## 🤖 Agent Telemetry Configuration
@@ -222,6 +222,54 @@ codex "your prompt"
 
 **Events captured:** `conversation_starts`, `user_prompt`, `api_request`, `sse_event` (token usage), `tool_decision`, `tool_result`
 
+### Gemini CLI Setup
+
+Gemini CLI has built-in OpenTelemetry support. Configure it via environment variables or settings file.
+
+#### Option 1: Environment Variables
+
+```bash
+# Enable telemetry
+export GEMINI_TELEMETRY_ENABLED=true
+
+# Configure OTLP endpoint
+export GEMINI_TELEMETRY_OTLP_ENDPOINT=http://127.0.0.1:4318
+export GEMINI_TELEMETRY_OTLP_PROTOCOL=http
+
+# Optional: Log prompts (disabled by default for privacy)
+export GEMINI_TELEMETRY_LOG_PROMPTS=true
+
+# Run Gemini CLI
+gemini "your prompt"
+```
+
+#### Option 2: Settings File
+
+Create or edit `~/.gemini/settings.json` (user-level) or `.gemini/settings.json` (project-level):
+
+```json
+{
+  "telemetry": {
+    "enabled": true,
+    "target": "local",
+    "otlpEndpoint": "http://127.0.0.1:4318",
+    "otlpProtocol": "http",
+    "logPrompts": false
+  }
+}
+```
+
+#### Option 3: CLI Flags (per-run)
+
+```bash
+gemini --telemetry \
+  --telemetry-otlp-endpoint="http://127.0.0.1:4318" \
+  --telemetry-otlp-protocol=http \
+  "your prompt"
+```
+
+**Events captured:** `config`, `user_prompt`, `api_request`, `api_response`, `api_error`, `tool_call`, `file_operation`, `agent.start`, `agent.finish`
+
 ### Testing the Setup
 
 Verify the bridge is working with the test script:
@@ -233,7 +281,10 @@ Verify the bridge is working with the test script:
 # Test with simulated Codex events
 ./test-telemetry.sh --verify-codex
 
-# Test both agents
+# Test with simulated Gemini events
+./test-telemetry.sh --verify-gemini
+
+# Test all agents
 ./test-telemetry.sh --verify-all
 ```
 
@@ -328,11 +379,13 @@ npm start
 **Architecture with OTLP Export:**
 
 ```
-Claude Code → OTLP → Telemetry Bridge → Langfuse (dashboard)
-                           ↓
-                    OpenTelemetry Collector
-                           ↓
-                    Jaeger / Prometheus / Grafana
+Claude Code ─┐
+             │
+  Codex CLI ─┼──→ OTLP ──→ Telemetry Bridge ──→ Langfuse (dashboard)
+             │                    ↓
+ Gemini CLI ─┘             OpenTelemetry Collector
+                                  ↓
+                           Jaeger / Prometheus / Grafana
 ```
 
 ## 🔒 Privacy & Security
@@ -351,7 +404,7 @@ Claude Code → OTLP → Telemetry Bridge → Langfuse (dashboard)
 ## 🤔 Should You Use This?
 
 **Use this if you want to:**
-- Track Claude Code and/or Codex CLI costs across your team
+- Track Claude Code, Codex CLI, and/or Gemini CLI costs across your team
 - Understand usage patterns and peak times
 - Have transparency into AI tool spending
 - Keep telemetry data on your own infrastructure
@@ -369,7 +422,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 <p align="center">
   <strong>Simple, honest telemetry for AI coding assistants</strong><br>
-  <em>Supports Claude Code and Codex CLI with a pluggable architecture for more agents</em><br>
+  <em>Supports Claude Code, Codex CLI, and Gemini CLI with a pluggable architecture for more agents</em><br>
   <em>100% AI-assisted repository, made with ❤️ by Claude and <a href="https://github.com/lainra">@lainra</a></em><br><br>
   <a href="https://github.com/lainra/claude-code-telemetry/issues">Report Issue</a> ·
   <a href="https://github.com/lainra/claude-code-telemetry/pulls">Submit PR</a>
