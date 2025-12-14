@@ -235,6 +235,41 @@ These customizations help you:
 - **Add business context** (Jira tickets, sprint numbers, reviewers)
 - **Track costs** per project or feature
 
+### 📤 OTLP Export to OpenTelemetry Collector
+
+Forward telemetry data to an OpenTelemetry Collector for integration with Jaeger, Prometheus, Grafana, and other observability backends.
+
+```bash
+# Enable OTLP export
+export OTLP_EXPORT_ENABLED=true
+export OTLP_EXPORT_ENDPOINT=http://otel-collector:4318
+
+# Start the telemetry bridge
+npm start
+```
+
+**Environment Variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OTLP_EXPORT_ENABLED` | `false` | Enable OTLP export |
+| `OTLP_EXPORT_ENDPOINT` | - | Collector endpoint (e.g., `http://localhost:4318`) |
+| `OTLP_EXPORT_METRICS_ENDPOINT` | - | Override for metrics endpoint |
+| `OTLP_EXPORT_LOGS_ENDPOINT` | - | Override for logs endpoint |
+| `OTLP_EXPORT_TIMEOUT` | `5000` | Request timeout in ms |
+| `OTLP_EXPORT_RETRIES` | `3` | Number of retries |
+| `OTLP_EXPORT_HEADERS` | - | Auth headers (e.g., `Authorization=Bearer token`) |
+
+**Architecture with OTLP Export:**
+
+```
+Claude Code → OTLP → Telemetry Bridge → Langfuse (dashboard)
+                           ↓
+                    OpenTelemetry Collector
+                           ↓
+                    Jaeger / Prometheus / Grafana
+```
+
 ## 🔒 Privacy & Security
 
 - **100% Local** - No external services unless you configure them

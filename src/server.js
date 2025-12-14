@@ -134,11 +134,11 @@ const server = http.createServer((req, res) => {
       try {
         const body = Buffer.concat(chunks)
         if (req.url === '/v1/traces') {
-          handleTraces(body, res, sessions, langfuse)
+          handleTraces(body, res, sessions, langfuse, config)
         } else if (req.url === '/v1/metrics') {
-          handleMetrics(body, res, sessions, langfuse)
+          handleMetrics(body, res, sessions, langfuse, config)
         } else if (req.url === '/v1/logs') {
-          handleLogs(body, res, sessions, langfuse)
+          handleLogs(body, res, sessions, langfuse, config)
         } else {
           res.writeHead(404)
           res.end('Not found')

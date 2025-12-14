@@ -50,6 +50,15 @@ function createConfig() {
     apiKey: process.env.API_KEY,
     nodeEnv: process.env.NODE_ENV || 'production',
     logLevel: process.env.LOG_LEVEL || 'info',
+    otlpExport: {
+      enabled: process.env.OTLP_EXPORT_ENABLED === 'true',
+      endpoint: process.env.OTLP_EXPORT_ENDPOINT || '',
+      metricsEndpoint: process.env.OTLP_EXPORT_METRICS_ENDPOINT || '',
+      logsEndpoint: process.env.OTLP_EXPORT_LOGS_ENDPOINT || '',
+      timeout: parseInt(process.env.OTLP_EXPORT_TIMEOUT || '5000', 10),
+      retries: parseInt(process.env.OTLP_EXPORT_RETRIES || '3', 10),
+      headers: process.env.OTLP_EXPORT_HEADERS || '',
+    },
   }
 }
 
@@ -68,6 +77,14 @@ function printConfigHelp() {
   logger.info('  MAX_REQUEST_SIZE - Maximum request size in bytes (default: 10485760)')
   logger.info('  LOG_LEVEL - Logging level (default: info)')
   logger.info('  NODE_ENV - Environment (default: production)')
+  logger.info('OTLP Export (forward to OpenTelemetry Collector):')
+  logger.info('  OTLP_EXPORT_ENABLED - Enable OTLP export (default: false)')
+  logger.info('  OTLP_EXPORT_ENDPOINT - Collector endpoint (e.g., http://localhost:4317)')
+  logger.info('  OTLP_EXPORT_METRICS_ENDPOINT - Override metrics endpoint')
+  logger.info('  OTLP_EXPORT_LOGS_ENDPOINT - Override logs endpoint')
+  logger.info('  OTLP_EXPORT_TIMEOUT - Request timeout in ms (default: 5000)')
+  logger.info('  OTLP_EXPORT_RETRIES - Number of retries (default: 3)')
+  logger.info('  OTLP_EXPORT_HEADERS - Auth headers (e.g., Authorization=Bearer token)')
 }
 
 /**
@@ -202,6 +219,10 @@ function handlePreflight(req, res) {
  * @returns {string} Startup banner
  */
 function generateStartupBanner(config) {
+  const otlpExportStatus = config.otlpExport?.enabled
+    ? `✅ OTLP Export: ${config.otlpExport.endpoint || 'No endpoint configured'}`
+    : '⏸️  OTLP Export: Disabled'
+
   return `
 🚀 Claude Code Telemetry Server Started!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -209,6 +230,7 @@ function generateStartupBanner(config) {
 ✅ Server: http://${config.host}:${config.port}
 ✅ Health: http://${config.host}:${config.port}/health
 ✅ Langfuse: ${config.langfuse.baseUrl}
+${otlpExportStatus}
 
 📋 Quick Setup (copy-paste this entire block):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

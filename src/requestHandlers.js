@@ -8,13 +8,14 @@ const pino = require('pino')
 const { SessionHandler, extractAttributesArray } = require('./sessionHandler')
 const { processEvent } = require('./eventProcessor')
 const { processMetric } = require('./metricsProcessor')
+const { exportMetrics, exportLogs } = require('./otlpExporter')
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' })
 
 /**
  * Handle OTLP traces endpoint
  */
-function handleTraces(data, res, sessions, langfuse) {
+function handleTraces(data, res, sessions, langfuse, config) {
   try {
     JSON.parse(data.toString()) // Validate JSON but Claude doesn't send traces
     logger.debug({ size: data.length }, 'Received traces')
@@ -31,10 +32,17 @@ function handleTraces(data, res, sessions, langfuse) {
 /**
  * Handle OTLP metrics endpoint
  */
-function handleMetrics(data, res, sessions, langfuse) {
+function handleMetrics(data, res, sessions, langfuse, config) {
   try {
     const metrics = JSON.parse(data.toString())
     logger.info({ size: data.length }, 'Received metrics')
+
+    // Export to OTLP collector if enabled (fire-and-forget)
+    if (config?.otlpExport?.enabled) {
+      exportMetrics(data, config.otlpExport).catch((error) => {
+        logger.error({ error: error.message }, 'OTLP metrics export failed')
+      })
+    }
 
     // Log the actual metrics structure
     if (logger.level === 'debug') {
@@ -92,10 +100,17 @@ function handleMetrics(data, res, sessions, langfuse) {
 /**
  * Handle OTLP logs endpoint
  */
-function handleLogs(data, res, sessions, langfuse) {
+function handleLogs(data, res, sessions, langfuse, config) {
   try {
     const logs = JSON.parse(data.toString())
     logger.debug({ size: data.length }, 'Received logs')
+
+    // Export to OTLP collector if enabled (fire-and-forget)
+    if (config?.otlpExport?.enabled) {
+      exportLogs(data, config.otlpExport).catch((error) => {
+        logger.error({ error: error.message }, 'OTLP logs export failed')
+      })
+    }
 
     // Process each resource log
     if (logs && logs.resourceLogs) {
