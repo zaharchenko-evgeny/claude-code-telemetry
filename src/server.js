@@ -94,8 +94,8 @@ let errorCount = 0
 const server = http.createServer((req, res) => {
   requestCount++
 
-  // CORS headers
-  setCorsHeaders(res)
+  // CORS headers (restricted to localhost only)
+  setCorsHeaders(req, res)
 
   // Handle preflight
   if (handlePreflight(req, res)) {

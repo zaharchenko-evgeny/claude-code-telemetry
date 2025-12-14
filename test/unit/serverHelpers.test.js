@@ -243,16 +243,51 @@ describe('Server Helpers', () => {
   })
 
   describe('setCorsHeaders', () => {
-    test('sets all CORS headers', () => {
-      const res = {
-        setHeader: jest.fn(),
-      }
+    test('sets CORS headers for localhost origin', () => {
+      const req = { headers: { origin: 'http://localhost:3000' } }
+      const res = { setHeader: jest.fn() }
 
-      setCorsHeaders(res)
+      setCorsHeaders(req, res)
 
-      expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', '*')
+      expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'http://localhost:3000')
       expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
       expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    })
+
+    test('sets CORS headers for 127.0.0.1 origin', () => {
+      const req = { headers: { origin: 'http://127.0.0.1:4318' } }
+      const res = { setHeader: jest.fn() }
+
+      setCorsHeaders(req, res)
+
+      expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'http://127.0.0.1:4318')
+    })
+
+    test('sets CORS headers for localhost without port', () => {
+      const req = { headers: { origin: 'http://localhost' } }
+      const res = { setHeader: jest.fn() }
+
+      setCorsHeaders(req, res)
+
+      expect(res.setHeader).toHaveBeenCalledWith('Access-Control-Allow-Origin', 'http://localhost')
+    })
+
+    test('does not set CORS headers for external origin', () => {
+      const req = { headers: { origin: 'http://evil.com' } }
+      const res = { setHeader: jest.fn() }
+
+      setCorsHeaders(req, res)
+
+      expect(res.setHeader).not.toHaveBeenCalled()
+    })
+
+    test('does not set CORS headers when no origin', () => {
+      const req = { headers: {} }
+      const res = { setHeader: jest.fn() }
+
+      setCorsHeaders(req, res)
+
+      expect(res.setHeader).not.toHaveBeenCalled()
     })
   })
 

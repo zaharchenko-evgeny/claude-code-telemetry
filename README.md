@@ -183,6 +183,58 @@ docker compose up telemetry-bridge
 
 See `.env.example` for all options.
 
+### 🏷️ Custom Langfuse Tags, Metadata & Trace Names
+
+You can customize how traces appear in Langfuse by setting environment variables before running Claude Code:
+
+```bash
+# Custom trace name (appears in Langfuse trace list)
+export LANGFUSE_TRACE_NAME="feature-development"
+
+# Tags for filtering and grouping in Langfuse
+# Supports separators: semicolon (;), pipe (|), or comma (,)
+export LANGFUSE_TRACE_TAGS="project-alpha;backend;refactoring"
+
+# Custom metadata as JSON (appears in trace details)
+export LANGFUSE_TRACE_METADATA='{"project":"alpha","sprint":12,"team":"platform"}'
+
+# Custom user ID (overrides auto-detected user)
+export LANGFUSE_USER_ID="developer@company.com"
+
+# Custom session ID (overrides auto-generated session)
+export LANGFUSE_SESSION_ID="sprint-12-auth-feature"
+```
+
+#### Example: Team Project Tracking
+
+```bash
+# Set up tracking for a specific project
+export LANGFUSE_TRACE_NAME="auth-system-redesign"
+export LANGFUSE_TRACE_TAGS="auth;security;q1-2025"
+export LANGFUSE_TRACE_METADATA='{"jira":"AUTH-123","reviewer":"jane@company.com"}'
+
+# Now run Claude Code - all traces will be tagged
+claude "Implement OAuth2 flow"
+```
+
+#### Example: Per-Task Tracking
+
+```bash
+# Track different types of work
+export LANGFUSE_TRACE_TAGS="bugfix;production;urgent"
+claude "Fix the authentication timeout issue"
+
+# Change tags for different work
+export LANGFUSE_TRACE_TAGS="feature;backend;normal"
+claude "Add rate limiting to API endpoints"
+```
+
+These customizations help you:
+- **Filter traces** by project, team, or task type in Langfuse
+- **Group related work** across multiple sessions
+- **Add business context** (Jira tickets, sprint numbers, reviewers)
+- **Track costs** per project or feature
+
 ## 🔒 Privacy & Security
 
 - **100% Local** - No external services unless you configure them

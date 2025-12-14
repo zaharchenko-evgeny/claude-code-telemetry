@@ -266,6 +266,8 @@ describe('SessionHandler', () => {
         model: 'claude-3-opus',
         error_message: 'Rate limit exceeded',
         status_code: 429,
+        duration_ms: 1500,
+        attempt: 2,
       }
       const timestamp = '2024-07-31T10:00:00Z'
 
@@ -274,11 +276,24 @@ describe('SessionHandler', () => {
       expect(session.langfuse.event).toHaveBeenCalledWith({
         name: 'api-error',
         traceId: 'test-trace-id',
+        input: {
+          model: 'claude-3-opus',
+          attempt: 2,
+        },
+        output: {
+          error: 'Rate limit exceeded',
+          statusCode: 429,
+        },
         metadata: {
           model: 'claude-3-opus',
           error: 'Rate limit exceeded',
           statusCode: 429,
+          durationMs: 1500,
+          attempt: 2,
           timestamp: '2024-07-31T10:00:00Z',
+          claude: {
+            sessionId: 'test-session-id',
+          },
         },
         level: 'ERROR',
       })
@@ -298,11 +313,24 @@ describe('SessionHandler', () => {
       expect(session.langfuse.event).toHaveBeenCalledWith({
         name: 'api-error',
         traceId: 'test-trace-id',
+        input: {
+          model: 'claude-3-opus',
+          attempt: 1,
+        },
+        output: {
+          error: 'Unknown error',
+          statusCode: 500,
+        },
         metadata: {
           model: 'claude-3-opus',
           error: 'Unknown error',
           statusCode: 500,
+          durationMs: 0,
+          attempt: 1,
           timestamp: '2024-07-31T10:00:00Z',
+          claude: {
+            sessionId: 'test-session-id',
+          },
         },
         level: 'ERROR',
       })
@@ -395,6 +423,8 @@ describe('SessionHandler', () => {
         success: true,
         duration: 150,
         timestamp: '2024-07-31T10:00:00Z',
+        parameters: null,
+        error: null,
       })
       expect(session.langfuse.event).toHaveBeenCalledWith(
         expect.objectContaining({

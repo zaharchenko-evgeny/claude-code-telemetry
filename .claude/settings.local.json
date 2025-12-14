@@ -37,7 +37,11 @@
       "Bash(git stash:*)",
       "Bash(npx license-checker:*)",
       "Bash(npm run test:unit:*)",
-      "Bash(npm run test:integration:*)"
+      "Bash(npm run test:integration:*)",
+      "mcp__jetbrains__list_directory_tree",
+      "mcp__jetbrains__get_file_text_by_path",
+      "Bash(wc:*)",
+      "Bash(npm audit:*)"
     ],
     "deny": []
   }

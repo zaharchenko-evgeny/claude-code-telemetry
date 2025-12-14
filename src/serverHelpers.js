@@ -146,13 +146,39 @@ function handleAuth(req, res, apiKey) {
 }
 
 /**
- * Set CORS headers
+ * Allowed CORS origins (localhost only for security)
+ */
+const ALLOWED_ORIGINS = [
+  'http://localhost',
+  'http://127.0.0.1',
+  'https://localhost',
+  'https://127.0.0.1',
+]
+
+/**
+ * Check if origin is allowed (localhost with any port)
+ * @param {string} origin - Origin header value
+ * @returns {boolean} Whether origin is allowed
+ */
+function isAllowedOrigin(origin) {
+  if (!origin) return false
+  return ALLOWED_ORIGINS.some(
+    (allowed) => origin === allowed || origin.startsWith(allowed + ':'),
+  )
+}
+
+/**
+ * Set CORS headers (restricted to localhost only)
+ * @param {Object} req - HTTP request
  * @param {Object} res - HTTP response
  */
-function setCorsHeaders(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+function setCorsHeaders(req, res) {
+  const origin = req.headers.origin
+  if (origin && isAllowedOrigin(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  }
 }
 
 /**
