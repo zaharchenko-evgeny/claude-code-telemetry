@@ -41,7 +41,8 @@
       "mcp__jetbrains__list_directory_tree",
       "mcp__jetbrains__get_file_text_by_path",
       "Bash(wc:*)",
-      "Bash(npm audit:*)"
+      "Bash(npm audit:*)",
+      "WebFetch(domain:langfuse.labs.jb.gg)"
     ],
     "deny": []
   }

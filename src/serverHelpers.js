@@ -2,6 +2,7 @@
  * Server Helper Functions
  *
  * Extracted server logic for better testability
+ * Supports both Claude Code and Codex CLI telemetry
  */
 
 const pino = require('pino')
@@ -224,7 +225,7 @@ function generateStartupBanner(config) {
     : '⏸️  OTLP Export: Disabled'
 
   return `
-🚀 Claude Code Telemetry Server Started!
+🚀 Claude Code & Codex Telemetry Server Started!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ✅ Server: http://${config.host}:${config.port}
@@ -232,7 +233,7 @@ function generateStartupBanner(config) {
 ✅ Langfuse: ${config.langfuse.baseUrl}
 ${otlpExportStatus}
 
-📋 Quick Setup (copy-paste this entire block):
+📋 Claude Code Setup (copy-paste):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 export CLAUDE_CODE_ENABLE_TELEMETRY=1
 export OTEL_LOGS_EXPORTER=otlp
@@ -240,13 +241,24 @@ export OTEL_METRICS_EXPORTER=otlp
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 export OTEL_EXPORTER_OTLP_METRICS_PROTOCOL=http/json
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://${config.host}:${config.port}
+
+🎯 Run: claude "What files are in this directory?"
+💡 Tip: export OTEL_LOG_USER_PROMPTS=1 to see prompts
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-🎯 Next step: Run Claude with any command:
-   claude "What files are in this directory?"
+📋 Codex CLI Setup (~/.codex/config.toml):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[otel]
+environment = "dev"
+log_user_prompt = false
+exporter = { otlp-http = {
+  endpoint = "http://${config.host}:${config.port}/v1/logs",
+  protocol = "json"
+} }
 
-💡 Tip: To see user prompts in telemetry, also set:
-   export OTEL_LOG_USER_PROMPTS=1
+🎯 Run: codex "What files are in this directory?"
+💡 Tip: Set log_user_prompt = true to see prompts
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 `
 }

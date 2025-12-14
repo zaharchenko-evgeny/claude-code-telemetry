@@ -1,7 +1,7 @@
 # Claude Code Telemetry 📊
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-1.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/Version-3.0.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/Coverage-95.44%25-brightgreen" alt="Code Coverage">
   <img src="https://img.shields.io/badge/Docker-Required-blue" alt="Docker">
@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <strong>See exactly how you/your team uses Claude Code</strong><br>
-  Track costs, usage patterns, and session data in real-time
+  <strong>See exactly how you/your team uses AI coding assistants</strong><br>
+  Track costs, usage patterns, and session data for Claude Code and Codex CLI
 </p>
 
 ---
@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/2634cec3-94af-4a2d-90da-44cd641f1746
 
 ## 🎯 What This Actually Does
 
-Claude Code Telemetry is a lightweight bridge that captures telemetry data from Claude Code and forwards it to Langfuse for visualization. You get:
+A lightweight telemetry bridge that captures data from **Claude Code** and **OpenAI Codex CLI** and forwards it to Langfuse for visualization. You get:
 
 - 💰 **Cost Tracking** - See costs per session, user, and model
 - 📊 **Usage Metrics** - Token counts, cache hits, and tool usage
@@ -106,17 +106,19 @@ Today's Usage:
 ## 🔧 How It Works
 
 ```
-Claude Code → OpenTelemetry → Telemetry Bridge → Langfuse
-     ↓              ↓               ↓                ↓
-  User asks     Sends OTLP    Parses & forwards   Shows in
-  questions    telemetry data   to Langfuse       dashboard
+Claude Code ─┐                              ┌─→ Langfuse Dashboard
+             │    OpenTelemetry    Telemetry│
+             ├──→ (OTLP Logs) ───→  Bridge ─┤
+             │                              │
+  Codex CLI ─┘                              └─→ OpenTelemetry Collector (optional)
 ```
 
 The bridge:
-1. Listens for OpenTelemetry data from Claude Code
-2. Enriches it with session context
-3. Forwards to Langfuse for visualization
-4. Groups related work into analyzable sessions
+1. Listens for OpenTelemetry data from Claude Code and Codex CLI
+2. Detects the agent type and normalizes events
+3. Enriches with session context
+4. Forwards to Langfuse for visualization
+5. Groups related work into analyzable sessions
 
 ## 🌟 What This Tool Is (and Isn't)
 
@@ -169,8 +171,71 @@ docker compose up telemetry-bridge
 ## 📋 Requirements
 
 - Docker Desktop ([install](https://docker.com/products/docker-desktop)) - For quickstart
-- Claude Code CLI (`claude`)
+- Claude Code CLI (`claude`) and/or Codex CLI (`codex`)
 - Node.js 18+ (optional) - For bridge-only mode
+
+## 🤖 Agent Telemetry Configuration
+
+### Claude Code Setup
+
+Configure Claude Code to send telemetry to the bridge:
+
+```bash
+# Enable telemetry
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+
+# Configure OTLP export
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+
+# Optional: Enable prompt logging (disabled by default for privacy)
+export OTEL_LOG_USER_PROMPTS=1
+
+# Run Claude Code
+claude "your prompt"
+```
+
+**Events captured:** `user_prompt`, `api_request`, `api_error`, `tool_decision`, `tool_result`
+
+### Codex CLI Setup
+
+Configure Codex CLI by editing `~/.codex/config.toml`:
+
+```toml
+[otel]
+environment = "dev"
+log_user_prompt = false  # Set to true to log prompts
+
+exporter = { otlp-http = {
+  endpoint = "http://127.0.0.1:4318/v1/logs",
+  protocol = "json"
+} }
+```
+
+Then run Codex normally:
+
+```bash
+codex "your prompt"
+```
+
+**Events captured:** `conversation_starts`, `user_prompt`, `api_request`, `sse_event` (token usage), `tool_decision`, `tool_result`
+
+### Testing the Setup
+
+Verify the bridge is working with the test script:
+
+```bash
+# Test with simulated Claude events
+./test-telemetry.sh --verify
+
+# Test with simulated Codex events
+./test-telemetry.sh --verify-codex
+
+# Test both agents
+./test-telemetry.sh --verify-all
+```
 
 ## 🎛️ Configuration
 
@@ -281,14 +346,16 @@ Claude Code → OTLP → Telemetry Bridge → Langfuse (dashboard)
 
 - [Environment Variables](docs/ENVIRONMENT_VARIABLES.md) - Complete configuration guide
 - [Telemetry Guide](docs/TELEMETRY_GUIDE.md) - Understanding the data format
+- [Adding New Agents](docs/ADDING_NEW_AGENTS.md) - Guide for adding support for new AI agents
 
 ## 🤔 Should You Use This?
 
 **Use this if you want to:**
-- Track Claude Code costs across your team
-- Understand usage patterns and peak times  
+- Track Claude Code and/or Codex CLI costs across your team
+- Understand usage patterns and peak times
 - Have transparency into AI tool spending
 - Keep telemetry data on your own infrastructure
+- Support multiple AI coding assistants with a unified dashboard
 
 ## 🤝 Contributing
 
@@ -301,8 +368,9 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>Simple, honest telemetry for Claude Code</strong><br>
+  <strong>Simple, honest telemetry for AI coding assistants</strong><br>
+  <em>Supports Claude Code and Codex CLI with a pluggable architecture for more agents</em><br>
   <em>100% AI-assisted repository, made with ❤️ by Claude and <a href="https://github.com/lainra">@lainra</a></em><br><br>
-  <a href="https://github.com/lainra/claude-code-telemetry/issues">Report Issue</a> · 
+  <a href="https://github.com/lainra/claude-code-telemetry/issues">Report Issue</a> ·
   <a href="https://github.com/lainra/claude-code-telemetry/pulls">Submit PR</a>
 </p>

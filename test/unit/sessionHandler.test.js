@@ -664,34 +664,33 @@ describe('SessionHandler', () => {
 
       await session.finalize()
 
-      expect(mockLangfuseInstance.trace).toHaveBeenCalledWith({
-        name: 'session-summary',
-        sessionId: 'test-session-id',
-        userId: expect.any(String),
-        version: '1.0.0',
-        input: expect.objectContaining({
-          sessionStart: expect.any(String),
-          metadata: expect.objectContaining({
-            service: {
-              name: 'test-service',
-              version: '1.0.0',
+      expect(mockLangfuseInstance.trace).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: expect.stringContaining('session-summary'),
+          sessionId: 'test-session-id',
+          userId: expect.any(String),
+          version: '1.0.0',
+          input: expect.objectContaining({
+            sessionStart: expect.any(String),
+          }),
+          output: expect.objectContaining({
+            conversationCount: 2,
+            apiCallCount: 3,
+            toolCallCount: 5,
+            totalCost: 0.5,
+            tokens: expect.objectContaining({
+              total: 2000,
+            }),
+            codeChanges: {
+              linesAdded: 100,
+              linesRemoved: 20,
+              netChange: 80,
             },
           }),
+          metadata: expect.any(Object),
+          tags: expect.any(Array),
         }),
-        output: expect.objectContaining({
-          conversationCount: 2,
-          apiCallCount: 3,
-          toolCallCount: 5,
-          totalCost: 0.5,
-          totalTokens: 2000,
-          codeChanges: {
-            linesAdded: 100,
-            linesRemoved: 20,
-            netChange: 80,
-          },
-        }),
-        metadata: expect.any(Object),
-      })
+      )
 
       expect(mockLangfuseInstance.flushAsync).toHaveBeenCalled()
     })

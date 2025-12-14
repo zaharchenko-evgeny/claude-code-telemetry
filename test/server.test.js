@@ -237,10 +237,12 @@ describeIntegration('OTLP Server Integration Tests', () => {
     test('Handles CORS preflight requests', async () => {
       const response = await fetch(`${baseUrl}/v1/logs`, {
         method: 'OPTIONS',
+        headers: { Origin: 'http://localhost:3000' },
       })
 
       expect(response.status).toBe(204) // OPTIONS returns 204 No Content
-      expect(response.headers.get('access-control-allow-origin')).toBe('*')
+      // CORS is only enabled for localhost origins
+      expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:3000')
       expect(response.headers.get('access-control-allow-methods')).toContain('POST')
     })
   })

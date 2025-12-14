@@ -1,5 +1,6 @@
 // Session Handler class with Langfuse resource attribute support
 // Patched version to support langfuse.trace.name, langfuse.tags, langfuse.metadata, etc.
+// Supports both Claude Code and Codex CLI telemetry
 const pino = require('pino')
 
 const logger = pino({
@@ -768,9 +769,9 @@ class SessionHandler {
       if (this.currentSpan) {
         this.currentSpan.end({
           output: {
-            toolCount: this.toolSequence.length,
-            tools: this.toolSequence.map((t) => `${t.name}:${t.success}`).join(', '),
-            totalDuration: this.toolSequence.reduce((sum, t) => sum + t.duration, 0),
+            toolCount: this.toolSequence?.length || 0,
+            tools: this.toolSequence?.map((t) => `${t.name}:${t.success}`).join(', ') || '',
+            totalDuration: this.toolSequence?.reduce((sum, t) => sum + (t.duration || 0), 0) || 0,
           },
         })
         this.currentSpan = null
@@ -783,7 +784,7 @@ class SessionHandler {
             duration: this.conversationStartTime ? Date.now() - this.conversationStartTime : 0,
           },
         })
-        if (this.conversationStartTime) {
+        if (this.conversationStartTime && this.latencies?.conversation) {
           this.latencies.conversation.push(Date.now() - this.conversationStartTime)
         }
       }
@@ -802,35 +803,51 @@ class SessionHandler {
         }
       }
 
-      const apiPercentiles = calculatePercentiles(this.latencies.api)
-      const toolPercentiles = calculatePercentiles(this.latencies.tool)
-      const conversationPercentiles = calculatePercentiles(this.latencies.conversation)
+      const apiPercentiles = calculatePercentiles(this.latencies?.api)
+      const toolPercentiles = calculatePercentiles(this.latencies?.tool)
+      const conversationPercentiles = calculatePercentiles(this.latencies?.conversation)
 
       const sessionDuration = Date.now() - this.createdAt.getTime()
 
+      // Determine source (Codex vs Claude Code)
+      const isCodex = this.source === 'codex'
+      const sourceLabel = isCodex ? 'codex' : 'claude-code'
+
+      // Build token breakdown based on source
+      const tokenInfo = isCodex
+        ? {
+            breakdown: this.tokenBreakdown || { input: 0, output: 0, cached: 0, reasoning: 0, tool: 0 },
+            total: this.totalTokens || 0,
+          }
+        : {
+            cacheTokens: this.cacheTokens || { read: 0, creation: 0 },
+            total: this.totalTokens || 0,
+          }
+
       // Build session summary trace options
       const summaryOptions = {
-        name: 'session-summary',
-        sessionId: this.langfuseConfig.sessionId || this.sessionId,
-        userId: this.langfuseConfig.userId || this.metadata.userId || 'claude-code-user',
-        version: this.metadata.release,
+        name: `${sourceLabel}-session-summary`,
+        sessionId: this.langfuseConfig?.sessionId || this.sessionId,
+        userId: this.langfuseConfig?.userId || this.metadata?.userId || `${sourceLabel}-user`,
+        version: this.metadata?.release,
         input: {
           sessionStart: this.createdAt.toISOString(),
+          source: sourceLabel,
           metadata: this.metadata,
+          ...(isCodex && this.codexConfig ? { codexConfig: this.codexConfig } : {}),
         },
         output: {
           sessionEnd: new Date().toISOString(),
           sessionDuration,
-          conversationCount: this.conversationCount,
-          apiCallCount: this.apiCallCount,
-          toolCallCount: this.toolCallCount,
-          totalCost: this.totalCost,
-          totalTokens: this.totalTokens,
-          cacheTokens: this.cacheTokens || { read: 0, creation: 0 },
+          conversationCount: this.conversationCount || 0,
+          apiCallCount: this.apiCallCount || 0,
+          toolCallCount: this.toolCallCount || 0,
+          totalCost: this.totalCost || 0,
+          tokens: tokenInfo,
           codeChanges: {
-            linesAdded: this.linesAdded,
-            linesRemoved: this.linesRemoved,
-            netChange: this.linesAdded - this.linesRemoved,
+            linesAdded: this.linesAdded || 0,
+            linesRemoved: this.linesRemoved || 0,
+            netChange: (this.linesAdded || 0) - (this.linesRemoved || 0),
           },
           performance: {
             api: apiPercentiles,
@@ -845,34 +862,36 @@ class SessionHandler {
           },
         },
         metadata: {
-          ...(this.langfuseConfig.metadata || {}),
-          service: this.metadata.service,
-          environment: this.metadata.environment,
-          platform: this.metadata.platform,
-          nodeVersion: this.metadata.node_version,
-          toolSequence: this.toolSequence,
+          ...(this.langfuseConfig?.metadata || {}),
+          source: sourceLabel,
+          service: this.metadata?.service,
+          environment: this.metadata?.environment,
+          platform: this.metadata?.platform,
+          nodeVersion: this.metadata?.node_version,
+          toolSequence: this.toolSequence || [],
           finalStatus: 'completed',
           organizationId: this.organizationId,
-          userAccountUuid: this.userAccountUuid,
+          userAccountUuid: this.userAccountUuid || this.userAccountId,
           userEmail: this.userEmail,
           terminalType: this.terminalType,
+          ...(isCodex && this.defaultModel ? { model: this.defaultModel } : {}),
         },
       }
 
       // Add tags if configured
-      if (this.langfuseConfig.tags.length > 0) {
-        summaryOptions.tags = this.langfuseConfig.tags
-      }
+      const baseTags = this.langfuseConfig?.tags?.length > 0 ? [...this.langfuseConfig.tags] : []
+      summaryOptions.tags = [...baseTags, sourceLabel]
 
       const sessionSummary = this.langfuse.trace(summaryOptions)
 
+      // Calculate quality metrics
       const cacheHitRate =
-        this.totalTokens > 0
+        this.totalTokens > 0 && this.latencies?.api
           ? this.latencies.api.reduce((sum, l) => sum + l, 0) / this.totalTokens
           : 0
       const avgResponseTime = apiPercentiles ? apiPercentiles.avg : 0
       const toolSuccessRate =
-        this.toolSequence.length > 0
+        this.toolSequence?.length > 0
           ? this.toolSequence.filter((t) => t.success).length / this.toolSequence.length
           : 1
       const qualityScore = Math.min(
@@ -893,11 +912,14 @@ class SessionHandler {
           traceId: sessionSummary.id,
           name: 'efficiency',
           value: Math.min(100, Math.round(tokenEfficiency / 10)),
-          comment: `${this.conversationCount} conversations, $${this.totalCost.toFixed(4)}/conversation, $${tokenEfficiency.toFixed(4)}/1k tokens`,
+          comment: `${this.conversationCount || 0} conversations, $${this.totalCost.toFixed(4)}/conversation, $${tokenEfficiency.toFixed(4)}/1k tokens`,
         })
       }
 
-      logger.info({ sessionId: this.sessionId, totalCost: this.totalCost }, 'Session finalized')
+      logger.info(
+        { sessionId: this.sessionId, source: sourceLabel, totalCost: this.totalCost },
+        'Session finalized',
+      )
       const baseUrl = (process.env.LANGFUSE_HOST || 'http://localhost:3000').replace(
         /\/api\/public.*$/,
         '',
