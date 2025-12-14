@@ -13,6 +13,9 @@ const {
   exportMetrics,
   exportLogs,
   createExporter,
+  PROTOCOLS,
+  DEFAULT_PORTS,
+  CONTENT_TYPES,
 } = require('../../src/otlpExporter')
 
 describe('OTLP Exporter', () => {
@@ -342,6 +345,92 @@ describe('OTLP Exporter', () => {
       await exporter.exportMetrics({ test: 'data' })
 
       expect(global.fetch).toHaveBeenCalled()
+    })
+
+    test('getProtocol returns configured protocol', () => {
+      const config = {
+        enabled: true,
+        endpoint: 'http://collector:4318',
+        protocol: 'http/protobuf',
+      }
+
+      const exporter = createExporter(config)
+      expect(exporter.getProtocol()).toBe('http/protobuf')
+    })
+
+    test('getProtocol returns http/json by default', () => {
+      const config = {
+        enabled: true,
+        endpoint: 'http://collector:4318',
+      }
+
+      const exporter = createExporter(config)
+      expect(exporter.getProtocol()).toBe('http/json')
+    })
+  })
+
+  describe('Protocol Constants', () => {
+    test('PROTOCOLS contains all supported protocols', () => {
+      expect(PROTOCOLS.HTTP_JSON).toBe('http/json')
+      expect(PROTOCOLS.HTTP_PROTOBUF).toBe('http/protobuf')
+      expect(PROTOCOLS.GRPC).toBe('grpc')
+    })
+
+    test('DEFAULT_PORTS has correct values', () => {
+      expect(DEFAULT_PORTS['http/json']).toBe(4318)
+      expect(DEFAULT_PORTS['http/protobuf']).toBe(4318)
+      expect(DEFAULT_PORTS[PROTOCOLS.GRPC]).toBe(4317)
+    })
+
+    test('CONTENT_TYPES has correct values', () => {
+      expect(CONTENT_TYPES['http/json']).toBe('application/json')
+      expect(CONTENT_TYPES['http/protobuf']).toBe('application/x-protobuf')
+    })
+  })
+
+  describe('Multi-protocol export', () => {
+    test('exports with http/json protocol', async () => {
+      global.fetch.mockResolvedValue({ ok: true, status: 200 })
+
+      const config = {
+        enabled: true,
+        endpoint: 'http://collector:4318',
+        protocol: 'http/json',
+        timeout: 5000,
+      }
+
+      await exportMetrics({ resourceMetrics: [] }, config)
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://collector:4318/v1/metrics',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+          }),
+        }),
+      )
+    })
+
+    test('exports logs with http/json protocol', async () => {
+      global.fetch.mockResolvedValue({ ok: true, status: 200 })
+
+      const config = {
+        enabled: true,
+        endpoint: 'http://collector:4318',
+        protocol: 'http/json',
+        timeout: 5000,
+      }
+
+      await exportLogs({ resourceLogs: [] }, config)
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://collector:4318/v1/logs',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Content-Type': 'application/json',
+          }),
+        }),
+      )
     })
   })
 })

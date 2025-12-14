@@ -67,3 +67,4 @@ coverage/
 
 # Downloaded tools
 git-cliff-*
+/.claude/

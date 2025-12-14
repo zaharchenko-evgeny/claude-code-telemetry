@@ -53,6 +53,7 @@ function createConfig() {
     logLevel: process.env.LOG_LEVEL || 'info',
     otlpExport: {
       enabled: process.env.OTLP_EXPORT_ENABLED === 'true',
+      protocol: process.env.OTLP_EXPORT_PROTOCOL || 'http/json',
       endpoint: process.env.OTLP_EXPORT_ENDPOINT || '',
       metricsEndpoint: process.env.OTLP_EXPORT_METRICS_ENDPOINT || '',
       logsEndpoint: process.env.OTLP_EXPORT_LOGS_ENDPOINT || '',
@@ -80,7 +81,8 @@ function printConfigHelp() {
   logger.info('  NODE_ENV - Environment (default: production)')
   logger.info('OTLP Export (forward to OpenTelemetry Collector):')
   logger.info('  OTLP_EXPORT_ENABLED - Enable OTLP export (default: false)')
-  logger.info('  OTLP_EXPORT_ENDPOINT - Collector endpoint (e.g., http://localhost:4317)')
+  logger.info('  OTLP_EXPORT_PROTOCOL - Transport protocol: http/json, http/protobuf, grpc (default: http/json)')
+  logger.info('  OTLP_EXPORT_ENDPOINT - Collector endpoint (e.g., http://localhost:4318 for HTTP, :4317 for gRPC)')
   logger.info('  OTLP_EXPORT_METRICS_ENDPOINT - Override metrics endpoint')
   logger.info('  OTLP_EXPORT_LOGS_ENDPOINT - Override logs endpoint')
   logger.info('  OTLP_EXPORT_TIMEOUT - Request timeout in ms (default: 5000)')
@@ -221,7 +223,7 @@ function handlePreflight(req, res) {
  */
 function generateStartupBanner(config) {
   const otlpExportStatus = config.otlpExport?.enabled
-    ? `✅ OTLP Export: ${config.otlpExport.endpoint || 'No endpoint configured'}`
+    ? `✅ OTLP Export: ${config.otlpExport.endpoint || 'No endpoint configured'} (${config.otlpExport.protocol || 'http/json'})`
     : '⏸️  OTLP Export: Disabled'
 
   return `

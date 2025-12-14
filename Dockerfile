@@ -11,12 +11,12 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm ci --only=production
 
-# Copy source code
-COPY . .
-
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
+
+# Copy source code and set ownership
+COPY --chown=nodejs:nodejs . .
 
 USER nodejs
 

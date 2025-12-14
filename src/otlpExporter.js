@@ -2,7 +2,10 @@
  * OTLP Exporter Module
  *
  * Forwards OTLP telemetry data to an OpenTelemetry Collector.
- * Supports both metrics and logs export via HTTP/JSON protocol.
+ * Supports multiple transport protocols:
+ * - http/json: HTTP with JSON payload (default)
+ * - http/protobuf: HTTP with Protocol Buffers payload
+ * - grpc: gRPC with Protocol Buffers payload
  */
 
 'use strict'
@@ -23,6 +26,26 @@ const logger = pino({
         }
       : undefined,
 })
+
+// Supported protocols
+const PROTOCOLS = {
+  HTTP_JSON: 'http/json',
+  HTTP_PROTOBUF: 'http/protobuf',
+  GRPC: 'grpc',
+}
+
+// Default ports for different protocols
+const DEFAULT_PORTS = {
+  [PROTOCOLS.HTTP_JSON]: 4318,
+  [PROTOCOLS.HTTP_PROTOBUF]: 4318,
+  [PROTOCOLS.GRPC]: 4317,
+}
+
+// Content types for HTTP protocols
+const CONTENT_TYPES = {
+  [PROTOCOLS.HTTP_JSON]: 'application/json',
+  [PROTOCOLS.HTTP_PROTOBUF]: 'application/x-protobuf',
+}
 
 /**
  * Parse headers string into object
@@ -79,13 +102,53 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
 }
 
 /**
- * Export data to OTLP endpoint
+ * Get the endpoint based on protocol
+ * @param {string} protocol - Transport protocol
+ * @param {string} baseEndpoint - Base endpoint URL
+ * @returns {string|null} Endpoint URL or null if not configured
+ */
+function getEndpoint(protocol, baseEndpoint) {
+  // If no endpoint is configured, return null (don't export)
+  if (!baseEndpoint) return null
+
+  return baseEndpoint
+}
+
+/**
+ * Normalize endpoint URL
+ * @param {string} endpoint - Endpoint URL
+ * @param {string} protocol - Transport protocol
+ * @param {string} signalPath - Signal path (e.g., /v1/metrics)
+ * @returns {string} Normalized endpoint URL
+ */
+function normalizeEndpoint(endpoint, protocol, signalPath) {
+  if (!endpoint) return null
+
+  // For gRPC, return as-is (no path needed)
+  if (protocol === PROTOCOLS.GRPC) {
+    return endpoint.replace(/\/$/, '')
+  }
+
+  // For HTTP protocols, ensure proper path
+  const base = endpoint.replace(/\/$/, '')
+  if (base.endsWith(signalPath)) {
+    return base
+  }
+  return `${base}${signalPath}`
+}
+
+// ============================================================================
+// HTTP/JSON Exporter
+// ============================================================================
+
+/**
+ * Export data via HTTP/JSON
  * @param {string} endpoint - OTLP endpoint URL
- * @param {Buffer|Object} data - Data to export (raw OTLP payload)
+ * @param {Buffer|Object} data - Data to export
  * @param {Object} config - Export configuration
  * @returns {Promise<void>}
  */
-async function exportToEndpoint(endpoint, data, config = {}) {
+async function exportViaHttpJson(endpoint, data, config = {}) {
   const { timeout = 5000, headers = {} } = config
 
   const controller = new AbortController()
@@ -97,7 +160,7 @@ async function exportToEndpoint(endpoint, data, config = {}) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': CONTENT_TYPES[PROTOCOLS.HTTP_JSON],
         ...headers,
       },
       body,
@@ -109,9 +172,235 @@ async function exportToEndpoint(endpoint, data, config = {}) {
       throw new Error(`OTLP export failed: ${response.status} ${response.statusText} - ${errorText}`)
     }
 
-    logger.debug({ endpoint, status: response.status }, 'OTLP export successful')
+    logger.debug({ endpoint, status: response.status, protocol: 'http/json' }, 'OTLP export successful')
   } finally {
     clearTimeout(timeoutId)
+  }
+}
+
+// ============================================================================
+// HTTP/Protobuf Exporter
+// ============================================================================
+
+// Lazy-load protobuf serializer
+let protobufSerializer = null
+
+function getProtobufSerializer() {
+  if (!protobufSerializer) {
+    protobufSerializer = require('./protobufSerializer')
+  }
+  return protobufSerializer
+}
+
+/**
+ * Export data via HTTP/Protobuf
+ * @param {string} endpoint - OTLP endpoint URL
+ * @param {Object} data - Data to export (JSON format)
+ * @param {Object} config - Export configuration
+ * @param {string} signalType - Signal type ('metrics' or 'logs')
+ * @returns {Promise<void>}
+ */
+async function exportViaHttpProtobuf(endpoint, data, config = {}, signalType = 'metrics') {
+  const { timeout = 5000, headers = {} } = config
+  const serializer = getProtobufSerializer()
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    // Convert JSON to protobuf binary
+    let body
+    if (signalType === 'metrics') {
+      body = await serializer.serializeMetrics(data)
+    } else {
+      body = await serializer.serializeLogs(data)
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': CONTENT_TYPES[PROTOCOLS.HTTP_PROTOBUF],
+        ...headers,
+      },
+      body,
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error')
+      throw new Error(`OTLP export failed: ${response.status} ${response.statusText} - ${errorText}`)
+    }
+
+    logger.debug({ endpoint, status: response.status, protocol: 'http/protobuf' }, 'OTLP export successful')
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+// ============================================================================
+// gRPC Exporter
+// ============================================================================
+
+// Lazy-load gRPC client
+let grpcModule = null
+let grpcClients = {}
+
+function getGrpcModule() {
+  if (!grpcModule) {
+    try {
+      grpcModule = require('@grpc/grpc-js')
+    } catch (error) {
+      logger.error({ error: error.message }, 'Failed to load @grpc/grpc-js')
+      throw new Error('gRPC support requires @grpc/grpc-js package')
+    }
+  }
+  return grpcModule
+}
+
+/**
+ * Get or create a gRPC client for the given endpoint and service
+ * @param {string} endpoint - gRPC endpoint
+ * @param {string} serviceName - Service name ('metrics' or 'logs')
+ * @param {Object} headers - Headers/metadata for authentication
+ * @returns {Object} gRPC client
+ */
+function getGrpcClient(endpoint, serviceName, headers = {}) {
+  const clientKey = `${endpoint}:${serviceName}`
+
+  if (grpcClients[clientKey]) {
+    return grpcClients[clientKey]
+  }
+
+  const grpc = getGrpcModule()
+  const serializer = getProtobufSerializer()
+
+  // Parse endpoint
+  const url = new URL(endpoint.startsWith('http') ? endpoint : `http://${endpoint}`)
+  const target = `${url.hostname}:${url.port || DEFAULT_PORTS[PROTOCOLS.GRPC]}`
+
+  // Create credentials
+  const isSecure = url.protocol === 'https:'
+  const credentials = isSecure
+    ? grpc.credentials.createSsl()
+    : grpc.credentials.createInsecure()
+
+  // Create metadata for headers
+  const metadata = new grpc.Metadata()
+  for (const [key, value] of Object.entries(headers)) {
+    metadata.add(key, value)
+  }
+
+  // Create client using generic method
+  const client = new grpc.Client(target, credentials)
+
+  // Store wrapper with metadata and serializer reference
+  grpcClients[clientKey] = {
+    client,
+    metadata,
+    serviceName,
+    serializer,
+    target,
+  }
+
+  logger.info({ target, serviceName }, 'Created gRPC client')
+
+  return grpcClients[clientKey]
+}
+
+/**
+ * Export data via gRPC
+ * @param {string} endpoint - gRPC endpoint
+ * @param {Object} data - Data to export (JSON format)
+ * @param {Object} config - Export configuration
+ * @param {string} signalType - Signal type ('metrics' or 'logs')
+ * @returns {Promise<void>}
+ */
+async function exportViaGrpc(endpoint, data, config = {}, signalType = 'metrics') {
+  const { timeout = 5000, headers = {} } = config
+
+  getGrpcModule() // Ensure gRPC module is loaded
+  const clientInfo = getGrpcClient(endpoint, signalType, headers)
+
+  // Serialize the request using protobuf serializer
+  let serializedData
+  if (signalType === 'metrics') {
+    serializedData = await clientInfo.serializer.serializeMetrics(data)
+  } else {
+    serializedData = await clientInfo.serializer.serializeLogs(data)
+  }
+
+  return new Promise((resolve, reject) => {
+    const deadline = new Date(Date.now() + timeout)
+
+    // Make unary call
+    const methodPath = signalType === 'metrics'
+      ? '/opentelemetry.proto.collector.metrics.v1.MetricsService/Export'
+      : '/opentelemetry.proto.collector.logs.v1.LogsService/Export'
+
+    clientInfo.client.makeUnaryRequest(
+      methodPath,
+      (arg) => arg, // Already serialized
+      (buffer) => buffer, // Don't deserialize response
+      serializedData,
+      clientInfo.metadata,
+      { deadline },
+      (error, response) => {
+        if (error) {
+          // Handle gRPC errors
+          const grpcError = new Error(`gRPC export failed: ${error.message} (code: ${error.code})`)
+          grpcError.code = error.code
+          reject(grpcError)
+        } else {
+          logger.debug({ endpoint: clientInfo.target, protocol: 'grpc', signalType }, 'OTLP export successful')
+          resolve(response)
+        }
+      },
+    )
+  })
+}
+
+/**
+ * Close all gRPC clients
+ */
+function closeGrpcClients() {
+  for (const [key, clientInfo] of Object.entries(grpcClients)) {
+    try {
+      clientInfo.client.close()
+      logger.debug({ key }, 'Closed gRPC client')
+    } catch (error) {
+      logger.warn({ key, error: error.message }, 'Error closing gRPC client')
+    }
+  }
+  grpcClients = {}
+}
+
+// ============================================================================
+// Unified Export Functions
+// ============================================================================
+
+/**
+ * Export data to OTLP endpoint using configured protocol
+ * @param {string} endpoint - OTLP endpoint URL
+ * @param {Buffer|Object} data - Data to export
+ * @param {Object} config - Export configuration
+ * @param {string} signalType - Signal type ('metrics' or 'logs')
+ * @returns {Promise<void>}
+ */
+async function exportToEndpoint(endpoint, data, config = {}, signalType = 'metrics') {
+  const protocol = config.protocol || PROTOCOLS.HTTP_JSON
+
+  switch (protocol) {
+    case PROTOCOLS.HTTP_JSON:
+      return exportViaHttpJson(endpoint, data, config)
+
+    case PROTOCOLS.HTTP_PROTOBUF:
+      return exportViaHttpProtobuf(endpoint, data, config, signalType)
+
+    case PROTOCOLS.GRPC:
+      return exportViaGrpc(endpoint, data, config, signalType)
+
+    default:
+      throw new Error(`Unsupported protocol: ${protocol}. Supported: ${Object.values(PROTOCOLS).join(', ')}`)
   }
 }
 
@@ -123,9 +412,17 @@ async function exportToEndpoint(endpoint, data, config = {}) {
 async function exportMetrics(data, config) {
   if (!config?.enabled) return
 
-  const endpoint = config.metricsEndpoint || `${config.endpoint}/v1/metrics`
+  const protocol = config.protocol || PROTOCOLS.HTTP_JSON
+  const signalPath = '/v1/metrics'
 
-  if (!endpoint || endpoint === '/v1/metrics') {
+  // Get endpoint - use specific metrics endpoint or construct from base
+  let endpoint = config.metricsEndpoint
+  if (!endpoint) {
+    const baseEndpoint = getEndpoint(protocol, config.endpoint)
+    endpoint = normalizeEndpoint(baseEndpoint, protocol, signalPath)
+  }
+
+  if (!endpoint || endpoint === signalPath) {
     logger.warn('OTLP export enabled but no endpoint configured')
     return
   }
@@ -138,13 +435,14 @@ async function exportMetrics(data, config) {
         exportToEndpoint(endpoint, data, {
           timeout: config.timeout,
           headers,
-        }),
+          protocol,
+        }, 'metrics'),
       config.retries || 3,
     )
 
-    logger.info({ endpoint }, 'Metrics exported to OTLP collector')
+    logger.info({ endpoint, protocol }, 'Metrics exported to OTLP collector')
   } catch (error) {
-    logger.error({ error: error.message, endpoint }, 'Failed to export metrics to OTLP collector')
+    logger.error({ error: error.message, endpoint, protocol }, 'Failed to export metrics to OTLP collector')
   }
 }
 
@@ -156,9 +454,17 @@ async function exportMetrics(data, config) {
 async function exportLogs(data, config) {
   if (!config?.enabled) return
 
-  const endpoint = config.logsEndpoint || `${config.endpoint}/v1/logs`
+  const protocol = config.protocol || PROTOCOLS.HTTP_JSON
+  const signalPath = '/v1/logs'
 
-  if (!endpoint || endpoint === '/v1/logs') {
+  // Get endpoint - use specific logs endpoint or construct from base
+  let endpoint = config.logsEndpoint
+  if (!endpoint) {
+    const baseEndpoint = getEndpoint(protocol, config.endpoint)
+    endpoint = normalizeEndpoint(baseEndpoint, protocol, signalPath)
+  }
+
+  if (!endpoint || endpoint === signalPath) {
     logger.warn('OTLP export enabled but no endpoint configured')
     return
   }
@@ -171,13 +477,14 @@ async function exportLogs(data, config) {
         exportToEndpoint(endpoint, data, {
           timeout: config.timeout,
           headers,
-        }),
+          protocol,
+        }, 'logs'),
       config.retries || 3,
     )
 
-    logger.info({ endpoint }, 'Logs exported to OTLP collector')
+    logger.info({ endpoint, protocol }, 'Logs exported to OTLP collector')
   } catch (error) {
-    logger.error({ error: error.message, endpoint }, 'Failed to export logs to OTLP collector')
+    logger.error({ error: error.message, endpoint, protocol }, 'Failed to export logs to OTLP collector')
   }
 }
 
@@ -191,14 +498,30 @@ function createExporter(config) {
     exportMetrics: (data) => exportMetrics(data, config),
     exportLogs: (data) => exportLogs(data, config),
     isEnabled: () => config?.enabled === true,
+    getProtocol: () => config?.protocol || PROTOCOLS.HTTP_JSON,
+    close: () => closeGrpcClients(),
   }
 }
 
 module.exports = {
+  // Main exports
   exportMetrics,
   exportLogs,
   createExporter,
+
+  // Protocol-specific exports
+  exportViaHttpJson,
+  exportViaHttpProtobuf,
+  exportViaGrpc,
+
+  // Utilities
   parseHeaders,
   retryWithBackoff,
   exportToEndpoint,
+  closeGrpcClients,
+
+  // Constants
+  PROTOCOLS,
+  DEFAULT_PORTS,
+  CONTENT_TYPES,
 }

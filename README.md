@@ -355,10 +355,26 @@ These customizations help you:
 
 Forward telemetry data to an OpenTelemetry Collector for integration with Jaeger, Prometheus, Grafana, and other observability backends.
 
+**Supported Protocols:**
+- `http/json` - HTTP with JSON payload (default, port 4318)
+- `http/protobuf` - HTTP with Protocol Buffers payload (port 4318)
+- `grpc` - gRPC with Protocol Buffers payload (port 4317)
+
 ```bash
-# Enable OTLP export
+# HTTP/JSON (default)
 export OTLP_EXPORT_ENABLED=true
+export OTLP_EXPORT_PROTOCOL=http/json
 export OTLP_EXPORT_ENDPOINT=http://otel-collector:4318
+
+# HTTP/Protobuf
+export OTLP_EXPORT_ENABLED=true
+export OTLP_EXPORT_PROTOCOL=http/protobuf
+export OTLP_EXPORT_ENDPOINT=http://otel-collector:4318
+
+# gRPC
+export OTLP_EXPORT_ENABLED=true
+export OTLP_EXPORT_PROTOCOL=grpc
+export OTLP_EXPORT_ENDPOINT=http://otel-collector:4317
 
 # Start the telemetry bridge
 npm start
@@ -369,9 +385,10 @@ npm start
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OTLP_EXPORT_ENABLED` | `false` | Enable OTLP export |
-| `OTLP_EXPORT_ENDPOINT` | - | Collector endpoint (e.g., `http://localhost:4318`) |
-| `OTLP_EXPORT_METRICS_ENDPOINT` | - | Override for metrics endpoint |
-| `OTLP_EXPORT_LOGS_ENDPOINT` | - | Override for logs endpoint |
+| `OTLP_EXPORT_PROTOCOL` | `http/json` | Transport protocol: `http/json`, `http/protobuf`, `grpc` |
+| `OTLP_EXPORT_ENDPOINT` | - | Collector endpoint (port 4318 for HTTP, 4317 for gRPC) |
+| `OTLP_EXPORT_METRICS_ENDPOINT` | - | Override for metrics endpoint (HTTP only) |
+| `OTLP_EXPORT_LOGS_ENDPOINT` | - | Override for logs endpoint (HTTP only) |
 | `OTLP_EXPORT_TIMEOUT` | `5000` | Request timeout in ms |
 | `OTLP_EXPORT_RETRIES` | `3` | Number of retries |
 | `OTLP_EXPORT_HEADERS` | - | Auth headers (e.g., `Authorization=Bearer token`) |
