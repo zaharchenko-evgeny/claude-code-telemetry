@@ -106,16 +106,54 @@ class SessionHandler {
       .split(/[;|,]/)
       .map((t) => t.trim())
       .filter((t) => t)
+
+    // Parse metadata
+    const metadataStr = attrs['langfuse.metadata'] || process.env.LANGFUSE_TRACE_METADATA
+    const metadata = metadataStr ? this.parseJsonSafe(metadataStr) : null
+
+    // WORKAROUND: Extract prompt from metadata.problem_statement when user_prompt event is not sent
+    // This handles Claude Code 2.0.75+ in non-interactive mode which doesn't emit user_prompt events
+    const extractedPrompt = this.extractPromptFromMetadata(metadata)
+
     return {
       traceName: attrs['langfuse.trace.name'] || process.env.LANGFUSE_TRACE_NAME || null,
       tags,
-      metadata:
-        attrs['langfuse.metadata'] || process.env.LANGFUSE_TRACE_METADATA
-          ? this.parseJsonSafe(attrs['langfuse.metadata'] || process.env.LANGFUSE_TRACE_METADATA)
-          : null,
+      metadata,
+      extractedPrompt,
       userId: attrs['langfuse.user.id'] || process.env.LANGFUSE_USER_ID || null,
       sessionId: attrs['langfuse.session.id'] || process.env.LANGFUSE_SESSION_ID || null,
     }
+  }
+
+  /**
+   * WORKAROUND: Extract prompt from metadata when user_prompt event is not available
+   * Claude Code 2.0.75+ in non-interactive mode doesn't send user_prompt events,
+   * but the prompt may be available in langfuse.metadata.problem_statement
+   */
+  extractPromptFromMetadata(metadata) {
+    if (!metadata) return null
+
+    // Try different possible prompt fields in order of preference
+    const promptFields = [
+      'problem_statement',
+      'prompt',
+      'task',
+      'instruction',
+      'query',
+      'input',
+    ]
+
+    for (const field of promptFields) {
+      if (metadata[field] && typeof metadata[field] === 'string' && metadata[field].trim()) {
+        logger.info(
+          { field, promptLength: metadata[field].length },
+          'Extracted prompt from metadata (workaround for non-interactive mode)',
+        )
+        return metadata[field].trim()
+      }
+    }
+
+    return null
   }
 
   parseJsonSafe(str) {
@@ -230,6 +268,18 @@ class SessionHandler {
       this.conversationCount++
       this.conversationStartTime = Date.now()
 
+      // WORKAROUND: Use extracted prompt from metadata if available (for non-interactive mode)
+      const extractedPrompt = this.langfuseConfig?.extractedPrompt
+      const promptSource = extractedPrompt ? 'metadata' : 'unavailable'
+      const promptValue = extractedPrompt || '[No user prompt captured - non-interactive mode]'
+
+      if (extractedPrompt) {
+        logger.info(
+          { sessionId: this.sessionId, promptLength: extractedPrompt.length, source: 'metadata' },
+          'Using extracted prompt from metadata (workaround for non-interactive mode)',
+        )
+      }
+
       // Build trace options with Langfuse config
       const traceOptions = {
         name: this.langfuseConfig.traceName || `conversation-${this.conversationCount}`,
@@ -240,7 +290,9 @@ class SessionHandler {
           this.userEmail ||
           this.metadata.userId,
         input: {
-          prompt: '[No user prompt captured - OTEL_LOG_USER_PROMPTS may be disabled]',
+          prompt: promptValue,
+          promptSource,
+          length: extractedPrompt?.length || 0,
           model,
           firstApiCall: true,
         },

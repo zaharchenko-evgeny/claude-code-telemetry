@@ -78,7 +78,18 @@
       "Bash(jq:*)",
       "Bash(./test-local-clean.sh:*)",
       "Bash(./test-console-export.sh:*)",
-      "Bash(./test-3way.sh)"
+      "Bash(./test-3way.sh)",
+      "WebSearch",
+      "Bash(CLAUDE_CODE_ENABLE_TELEMETRY=1:*)",
+      "Bash(OTEL_METRICS_EXPORTER=otlp:*)",
+      "Bash(OTEL_LOGS_EXPORTER=otlp )",
+      "Bash(OTEL_EXPORTER_OTLP_PROTOCOL=http/json )",
+      "Bash(OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318:*)",
+      "Bash(OTEL_METRIC_EXPORT_INTERVAL=1000:*)",
+      "Bash(OTEL_LOGS_EXPORT_INTERVAL=1000:*)",
+      "Bash(OTEL_LOG_USER_PROMPTS=1:*)",
+      "Bash(kill:*)",
+      "Bash(OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318:*)"
     ],
     "deny": []
   }

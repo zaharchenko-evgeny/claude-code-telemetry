@@ -16,6 +16,9 @@ const pino = require('pino')
 const ClaudeAgent = require('./claudeAgent')
 const CodexAgent = require('./codexAgent')
 const GeminiAgent = require('./geminiAgent')
+const JunieAgent = require('./junieAgent')
+const CopilotAgent = require('./copilotAgent')
+const ACPAgent = require('./acpAgent')
 
 const logger = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -36,7 +39,7 @@ const logger = pino({
  * Registered agents - add new agents here
  * Order matters: first matching agent wins
  */
-const AGENTS = [ClaudeAgent, CodexAgent, GeminiAgent]
+const AGENTS = [ClaudeAgent, CodexAgent, GeminiAgent, JunieAgent, CopilotAgent, ACPAgent]
 
 /**
  * Agent registry for managing telemetry processors
@@ -219,4 +222,7 @@ module.exports = {
   ClaudeAgent,
   CodexAgent,
   GeminiAgent,
+  JunieAgent,
+  CopilotAgent,
+  ACPAgent,
 }

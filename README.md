@@ -10,7 +10,7 @@
 
 <p align="center">
   <strong>See exactly how you/your team uses AI coding assistants</strong><br>
-  Track costs, usage patterns, and session data for Claude Code, Codex CLI, and Gemini CLI
+  Track costs, usage patterns, and session data for Claude Code, Codex CLI, Gemini CLI, Junie CLI, Copilot CLI, and ACP agents
 </p>
 
 ---
@@ -20,7 +20,7 @@ https://github.com/user-attachments/assets/2634cec3-94af-4a2d-90da-44cd641f1746
 
 ## 🎯 What This Actually Does
 
-A lightweight telemetry bridge that captures data from **Claude Code**, **OpenAI Codex CLI**, and **Google Gemini CLI** and forwards it to Langfuse for visualization. You get:
+A lightweight telemetry bridge that captures data from **Claude Code**, **OpenAI Codex CLI**, **Google Gemini CLI**, **JetBrains Junie CLI**, **GitHub Copilot CLI**, and **ACP-compliant agents** and forwards it to Langfuse for visualization. You get:
 
 - 💰 **Cost Tracking** - See costs per session, user, and model
 - 📊 **Usage Metrics** - Token counts, cache hits, and tool usage
@@ -108,13 +108,19 @@ Today's Usage:
 ```
 Claude Code ─┐                              ┌─→ Langfuse Dashboard
              │                              │
-  Codex CLI ─┼──→ OpenTelemetry ───→ Bridge ─┤
-             │    (OTLP Logs)               │
- Gemini CLI ─┘                              └─→ OpenTelemetry Collector (optional)
+  Codex CLI ─┤                              │
+             │                              │
+ Gemini CLI ─┤                              │
+             ├──→ OpenTelemetry ───→ Bridge ─┤
+  Junie CLI ─┤    (OTLP Logs)               │
+             │                              │
+Copilot CLI ─┤                              │
+             │                              │
+ ACP Agents ─┘                              └─→ OpenTelemetry Collector (optional)
 ```
 
 The bridge:
-1. Listens for OpenTelemetry data from Claude Code, Codex CLI, and Gemini CLI
+1. Listens for OpenTelemetry data from Claude Code, Codex CLI, Gemini CLI, Junie CLI, Copilot CLI, and ACP agents
 2. Detects the agent type and normalizes events
 3. Enriches with session context
 4. Forwards to Langfuse for visualization
@@ -171,7 +177,7 @@ docker compose up telemetry-bridge
 ## 📋 Requirements
 
 - Docker Desktop ([install](https://docker.com/products/docker-desktop)) - For quickstart
-- Claude Code CLI (`claude`), Codex CLI (`codex`), and/or Gemini CLI (`gemini`)
+- Claude Code CLI (`claude`), Codex CLI (`codex`), Gemini CLI (`gemini`), Junie CLI (`junie`), Copilot CLI (`copilot`), and/or ACP-compliant agents
 - Node.js 18+ (optional) - For bridge-only mode
 
 ## 🤖 Agent Telemetry Configuration
@@ -270,6 +276,83 @@ gemini --telemetry \
 
 **Events captured:** `config`, `user_prompt`, `api_request`, `api_response`, `api_error`, `tool_call`, `file_operation`, `agent.start`, `agent.finish`
 
+### Junie CLI Setup
+
+Junie CLI (JetBrains) supports standard OpenTelemetry environment variables for telemetry export.
+
+```bash
+# Configure OTLP endpoint
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+export OTEL_SERVICE_NAME="junie-cli"
+
+# Optional: Specify protocol (http/json or http/protobuf)
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/json"
+
+# Run Junie CLI
+junie "Refactor the login logic in src/auth.py"
+```
+
+**Events captured:** `config`, `user_prompt`, `api_request`, `api_response`, `api_error`, `tool_call`, `file_operation`, `task.start`, `task.finish`, `plan.start`, `plan.finish`, `review.start`, `review.finish`
+
+For detailed configuration, see [JUNIE_TELEMETRY.md](JUNIE_TELEMETRY.md).
+
+### Copilot CLI Setup
+
+Copilot CLI (GitHub) does not have native OTEL support. Telemetry requires a wrapper bridge that captures CLI invocations and emits OTEL spans.
+
+#### Recommended: Wrapper Bridge
+
+Create a wrapper script or use the provided Python bridge:
+
+```bash
+# Set up Langfuse OTEL endpoint
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/json"
+export OTEL_SERVICE_NAME="copilot-cli-bridge"
+
+# Run Copilot via wrapper (see COPILOT_TELEMETRY.md for implementation)
+python copilot_trace.py
+```
+
+#### Alternative: Session State Parsing
+
+The bridge can also parse Copilot's session files from `~/.copilot/session-state` and emit telemetry events.
+
+**Events captured:** `run`, `user_prompt`, `generation`, `api_error`, `tool_call`, `usage`, `session.start`, `session.end`
+
+For detailed configuration and wrapper implementation, see [COPILOT_TELEMETRY.md](COPILOT_TELEMETRY.md).
+
+### ACP (Agent Client Protocol) Setup
+
+ACP is a JSON-RPC over stdio protocol with out-of-band telemetry via OTLP. The client/editor runs a local OTLP receiver and injects standard OpenTelemetry environment variables when spawning agent subprocesses.
+
+#### Client/Editor Side
+
+1. Run an OTLP receiver (this bridge or an OpenTelemetry Collector)
+2. Inject environment variables when spawning agents:
+
+```bash
+# When launching ACP agent subprocess
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_SERVICE_NAME=my-acp-agent
+```
+
+#### Agent Author Side
+
+Use any OpenTelemetry SDK that auto-configures from environment variables. Extract trace context from `params._meta` for correlation:
+
+```javascript
+// Extract W3C trace context from ACP message
+const traceparent = params._meta?.traceparent
+const tracestate = params._meta?.tracestate
+const baggage = params._meta?.baggage
+```
+
+**Events captured:** `initialize`, `session.create`, `session.resume`, `session.end`, `message.handle`, `request`, `response`, `error`, plus `llm.*` and `tool.*` events.
+
+For detailed ACP telemetry specification, see [ACP_TELEMETRY.md](ACP_TELEMETRY.md).
+
 ### Testing the Setup
 
 Verify the bridge is working with the test script:
@@ -283,6 +366,15 @@ Verify the bridge is working with the test script:
 
 # Test with simulated Gemini events
 ./test-telemetry.sh --verify-gemini
+
+# Test with simulated Junie events
+./test-telemetry.sh --verify-junie
+
+# Test with simulated Copilot events
+./test-telemetry.sh --verify-copilot
+
+# Test with simulated ACP events
+./test-telemetry.sh --verify-acp
 
 # Test all agents
 ./test-telemetry.sh --verify-all
@@ -398,11 +490,15 @@ npm start
 ```
 Claude Code ─┐
              │
-  Codex CLI ─┼──→ OTLP ──→ Telemetry Bridge ──→ Langfuse (dashboard)
-             │                    ↓
- Gemini CLI ─┘             OpenTelemetry Collector
-                                  ↓
-                           Jaeger / Prometheus / Grafana
+  Codex CLI ─┤
+             │
+ Gemini CLI ─┤
+             ├──→ OTLP ──→ Telemetry Bridge ──→ Langfuse (dashboard)
+  Junie CLI ─┤                    ↓
+             │             OpenTelemetry Collector
+Copilot CLI ─┤                    ↓
+             │             Jaeger / Prometheus / Grafana
+ ACP Agents ─┘
 ```
 
 ## 🔒 Privacy & Security
@@ -421,7 +517,7 @@ Claude Code ─┐
 ## 🤔 Should You Use This?
 
 **Use this if you want to:**
-- Track Claude Code, Codex CLI, and/or Gemini CLI costs across your team
+- Track Claude Code, Codex CLI, Gemini CLI, Junie CLI, Copilot CLI, and/or ACP-compliant agents across your team
 - Understand usage patterns and peak times
 - Have transparency into AI tool spending
 - Keep telemetry data on your own infrastructure
@@ -439,7 +535,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 <p align="center">
   <strong>Simple, honest telemetry for AI coding assistants</strong><br>
-  <em>Supports Claude Code, Codex CLI, and Gemini CLI with a pluggable architecture for more agents</em><br>
+  <em>Supports Claude Code, Codex CLI, Gemini CLI, Junie CLI, Copilot CLI, and ACP agents with a pluggable architecture</em><br>
   <em>100% AI-assisted repository, made with ❤️ by Claude and <a href="https://github.com/lainra">@lainra</a></em><br><br>
   <a href="https://github.com/lainra/claude-code-telemetry/issues">Report Issue</a> ·
   <a href="https://github.com/lainra/claude-code-telemetry/pulls">Submit PR</a>

@@ -203,6 +203,8 @@ The `src/agents/types.js` file provides these event creators:
 | `createGenerationEvent` | Token usage/model response | `sessionId`, `model`, `tokens` |
 | `createToolDecisionEvent` | Tool approval/rejection | `sessionId`, `toolName`, `decision` |
 | `createToolResultEvent` | Tool execution result | `sessionId`, `toolName`, `success` |
+| `createFileOperationEvent` | File create/read/update operations | `sessionId`, `toolName`, `operation` |
+| `createAgentLifecycleEvent` | Agent start/finish events | `sessionId`, `agentName`, `lifecycle` |
 
 ## Event Type Constants
 
@@ -216,6 +218,8 @@ EventType.API_ERROR           // 'api_error'
 EventType.GENERATION          // 'generation'
 EventType.TOOL_DECISION       // 'tool_decision'
 EventType.TOOL_RESULT         // 'tool_result'
+EventType.FILE_OPERATION      // 'file_operation'
+EventType.AGENT_LIFECYCLE     // 'agent_lifecycle'
 ```
 
 ## Best Practices
@@ -230,8 +234,11 @@ EventType.TOOL_RESULT         // 'tool_result'
 ## Example: Real-World Agent Structure
 
 See the existing implementations for reference:
-- `src/agents/claudeAgent.js` - Claude Code CLI
+- `src/agents/claudeAgent.js` - Claude Code CLI (Anthropic)
 - `src/agents/codexAgent.js` - OpenAI Codex CLI
+- `src/agents/geminiAgent.js` - Google Gemini CLI
+- `src/agents/junieAgent.js` - JetBrains Junie CLI
+- `src/agents/copilotAgent.js` - GitHub Copilot CLI (wrapper-based)
 
 ## Troubleshooting
 

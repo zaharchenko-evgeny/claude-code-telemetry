@@ -109,6 +109,17 @@ function handleConversationStart(event, session, agent) {
  * Handle user prompt event
  */
 function handleUserPrompt(event, session, agent) {
+  logger.info(
+    {
+      sessionId: session.sessionId,
+      promptLength: event.promptLength,
+      hasPrompt: !!event.prompt,
+      hasTrace: !!session.currentTrace,
+      source: agent?.name || 'unknown',
+    },
+    'User prompt event received',
+  )
+
   // Start new conversation if no trace exists
   if (!session.currentTrace && session.langfuse) {
     session.conversationCount = (session.conversationCount || 0) + 1
@@ -126,6 +137,15 @@ function handleUserPrompt(event, session, agent) {
     session.currentTrace = session.langfuse.trace(traceOptions)
   } else if (session.currentTrace) {
     // Update existing trace with prompt
+    logger.info(
+      {
+        sessionId: session.sessionId,
+        traceId: session.currentTrace.id,
+        promptLength: event.promptLength,
+        hasPrompt: !!event.prompt,
+      },
+      'Updating existing trace with user prompt',
+    )
     session.currentTrace.update({
       input: {
         prompt: event.prompt || '[Prompt hidden]',
@@ -230,10 +250,24 @@ function handleGeneration(event, session, agent) {
     session.conversationCount = (session.conversationCount || 0) + 1
     session.conversationStartTime = Date.now()
 
+    // WORKAROUND: Use extracted prompt from metadata if available (for non-interactive mode)
+    const extractedPrompt = session.langfuseConfig?.extractedPrompt
+    const promptSource = extractedPrompt ? 'metadata' : 'unavailable'
+    const promptValue = extractedPrompt || '[No user prompt captured - non-interactive mode]'
+
+    if (extractedPrompt) {
+      logger.info(
+        { sessionId: session.sessionId, promptLength: extractedPrompt.length, source: 'metadata' },
+        'Using extracted prompt from metadata (workaround for non-interactive mode)',
+      )
+    }
+
     const traceOptions = buildTraceOptions(event, session, agent, {
       name: session.langfuseConfig?.traceName || `${agent?.name || 'ai'}-conversation-${session.conversationCount}`,
       input: {
-        prompt: '[No user prompt captured]',
+        prompt: promptValue,
+        promptSource,
+        length: extractedPrompt?.length || 0,
         model: event.model,
         firstApiCall: true,
       },
