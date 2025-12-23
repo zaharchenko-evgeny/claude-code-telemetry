@@ -422,21 +422,74 @@ function handleToolResult(event, session) {
 }
 
 /**
+ * Normalize metadata to comply with Langfuse requirements:
+ * - All values must be strings
+ * - Nested objects should be flattened with dot notation
+ * - Remove undefined/null values
+ * - Truncate strings longer than 200 characters
+ */
+function normalizeMetadata(metadata, prefix = '') {
+  if (!metadata || typeof metadata !== 'object') {
+    return {}
+  }
+
+  const normalized = {}
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === null || value === undefined) {
+      continue
+    }
+
+    const fullKey = prefix ? `${prefix}.${key}` : key
+
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      // Flatten nested objects
+      Object.assign(normalized, normalizeMetadata(value, fullKey))
+    } else {
+      // Convert to string and truncate if needed
+      let stringValue = String(value)
+      if (stringValue.length > 200) {
+        stringValue = stringValue.substring(0, 197) + '...'
+      }
+      normalized[fullKey] = stringValue
+    }
+  }
+
+  return normalized
+}
+
+/**
  * Build trace options with Langfuse config
  */
 function buildTraceOptions(event, session, agent, overrides = {}) {
+  // Collect all metadata sources
+  const rawMetadata = {
+    ...(session.langfuseConfig?.metadata || {}),
+    conversationIndex: session.conversationCount,
+    agent: agent?.name,
+    provider: agent?.provider,
+    ...event.metadata,
+  }
+
+  // Normalize metadata to comply with Langfuse requirements
+  const normalizedMetadata = normalizeMetadata(rawMetadata)
+
+  // Debug logging for metadata
+  logger.debug(
+    {
+      hasLangfuseConfig: !!session.langfuseConfig,
+      rawMetadataKeys: Object.keys(rawMetadata),
+      normalizedMetadataKeys: Object.keys(normalizedMetadata),
+      langfuseConfigMetadata: session.langfuseConfig?.metadata,
+    },
+    'Building trace options - metadata debug',
+  )
+
   const options = {
     name: overrides.name || `${agent?.name || 'ai'}-trace`,
     sessionId: session.langfuseConfig?.sessionId || session.sessionId,
     userId: session.langfuseConfig?.userId || event.userId || session.metadata?.userId,
     input: overrides.input,
-    metadata: {
-      ...(session.langfuseConfig?.metadata || {}),
-      conversationIndex: session.conversationCount,
-      agent: agent?.name,
-      provider: agent?.provider,
-      ...event.metadata,
-    },
+    metadata: normalizedMetadata,
     version: session.metadata?.release || event.metadata?.appVersion,
   }
 
@@ -448,6 +501,16 @@ function buildTraceOptions(event, session, agent, overrides = {}) {
   if (baseTags.length > 0) {
     options.tags = baseTags
   }
+
+  // Log final options before returning
+  logger.debug(
+    {
+      traceName: options.name,
+      metadataKeys: Object.keys(options.metadata || {}),
+      metadata: options.metadata,
+    },
+    'Final trace options built',
+  )
 
   return options
 }

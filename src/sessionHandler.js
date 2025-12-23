@@ -78,6 +78,8 @@ class SessionHandler {
         version: serviceInfo.version,
         langfuseTraceName: this.langfuseConfig.traceName,
         langfuseTags: this.langfuseConfig.tags,
+        langfuseMetadata: this.langfuseConfig.metadata,
+        hasExtractedPrompt: !!this.langfuseConfig.extractedPrompt,
       },
       'Session created',
     )
@@ -164,6 +166,42 @@ class SessionHandler {
     }
   }
 
+  /**
+   * Normalize metadata to comply with Langfuse requirements:
+   * - All values must be strings
+   * - Nested objects should be flattened with dot notation
+   * - Remove undefined/null values
+   * - Truncate strings longer than 200 characters
+   */
+  normalizeMetadata(metadata, prefix = '') {
+    if (!metadata || typeof metadata !== 'object') {
+      return {}
+    }
+
+    const normalized = {}
+    for (const [key, value] of Object.entries(metadata)) {
+      if (value === null || value === undefined) {
+        continue
+      }
+
+      const fullKey = prefix ? `${prefix}.${key}` : key
+
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        // Flatten nested objects
+        Object.assign(normalized, this.normalizeMetadata(value, fullKey))
+      } else {
+        // Convert to string and truncate if needed
+        let stringValue = String(value)
+        if (stringValue.length > 200) {
+          stringValue = stringValue.substring(0, 197) + '...'
+        }
+        normalized[fullKey] = stringValue
+      }
+    }
+
+    return normalized
+  }
+
   processLogRecord(logRecord, resource) {
     const eventName = logRecord.body?.stringValue
     const timestamp = logRecord.timeUnixNano
@@ -217,7 +255,7 @@ class SessionHandler {
         prompt: attrs.prompt || '[Prompt hidden]',
         length: attrs.prompt_length || 0,
       },
-      metadata: {
+      metadata: this.normalizeMetadata({
         ...(this.langfuseConfig.metadata || {}),
         promptId: attrs.prompt_id,
         promptTimestamp: attrs['event.timestamp'] || timestamp,
@@ -229,7 +267,7 @@ class SessionHandler {
           sessionId: attrs['session.id'] || this.sessionId,
           version: attrs['app.version'] || this.metadata.service.version,
         },
-      },
+      }),
       version: this.metadata.release,
     }
 
@@ -237,6 +275,18 @@ class SessionHandler {
     if (this.langfuseConfig.tags.length > 0) {
       traceOptions.tags = this.langfuseConfig.tags
     }
+
+    // Debug logging before creating trace
+    logger.debug(
+      {
+        traceName: traceOptions.name,
+        hasMetadata: !!traceOptions.metadata,
+        metadataKeys: traceOptions.metadata ? Object.keys(traceOptions.metadata) : [],
+        langfuseConfigMetadata: this.langfuseConfig.metadata,
+        fullMetadata: traceOptions.metadata,
+      },
+      'Creating trace in handleUserPrompt',
+    )
 
     // Create a new trace for this conversation
     this.currentTrace = this.langfuse.trace(traceOptions)
@@ -296,7 +346,7 @@ class SessionHandler {
           model,
           firstApiCall: true,
         },
-        metadata: {
+        metadata: this.normalizeMetadata({
           ...(this.langfuseConfig.metadata || {}),
           conversationIndex: this.conversationCount,
           startedFrom: 'api_request',
@@ -308,7 +358,7 @@ class SessionHandler {
             version: this.metadata.service.version,
             appVersion: attrs['app.version'] || this.metadata.service.version,
           },
-        },
+        }),
         version: this.metadata.release,
       }
 
@@ -316,6 +366,18 @@ class SessionHandler {
       if (this.langfuseConfig.tags.length > 0) {
         traceOptions.tags = this.langfuseConfig.tags
       }
+
+      // Debug logging before creating trace
+      logger.debug(
+        {
+          traceName: traceOptions.name,
+          hasMetadata: !!traceOptions.metadata,
+          metadataKeys: traceOptions.metadata ? Object.keys(traceOptions.metadata) : [],
+          langfuseConfigMetadata: this.langfuseConfig.metadata,
+          fullMetadata: traceOptions.metadata,
+        },
+        'Creating trace in handleApiRequest (extracted prompt path)',
+      )
 
       this.currentTrace = this.langfuse.trace(traceOptions)
     }
